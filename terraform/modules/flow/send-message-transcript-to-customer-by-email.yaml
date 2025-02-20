@@ -1,0 +1,621 @@
+workflow:
+  name: {{workflow_name}}
+  description: Sends a copy of the transcript from the messaging conversation to the customer's email address.
+  division: Home
+  startUpRef: "/workflow/states/state[Provision Flow_10]"
+  defaultLanguage: en-us
+  supportedLanguages:
+    en-us:
+      none: true
+  variables:
+    - externalContactVariable:
+        name: Flow.contact
+        initialValue:
+          noValue: true
+        isInput: false
+        isOutput: false
+    - stringVariable:
+        name: Flow.conversationId
+        initialValue:
+          noValue: true
+        isInput: true
+        isOutput: false
+    - stringVariable:
+        name: Flow.email
+        initialValue:
+          noValue: true
+        isInput: false
+        isOutput: false
+    - stringVariable:
+        name: Flow.errorCode
+        initialValue:
+          noValue: true
+        isInput: false
+        isOutput: false
+    - stringVariable:
+        name: Flow.externalContactId
+        initialValue:
+          noValue: true
+        isInput: true
+        isOutput: false
+    - stringVariable:
+        name: Flow.firstName
+        initialValue:
+          noValue: true
+        isInput: false
+        isOutput: false
+    - stringVariable:
+        name: Flow.htmlTranscript
+        initialValue:
+          noValue: true
+        isInput: false
+        isOutput: false
+    - stringVariable:
+        name: Flow.identifier
+        initialValue:
+          noValue: true
+        isInput: false
+        isOutput: false
+    - stringVariable:
+        name: Flow.identifierValue
+        initialValue:
+          noValue: true
+        isInput: false
+        isOutput: false
+    - stringVariable:
+        name: Flow.lastName
+        initialValue:
+          noValue: true
+        isInput: false
+        isOutput: false
+    - stringCollectionVariable:
+        name: Flow.messageTextArray
+        initialValue:
+          noValue: true
+        isInput: false
+        isOutput: false
+    - stringVariable:
+        name: Flow.phoneNumber
+        initialValue:
+          noValue: true
+        isInput: false
+        isOutput: false
+    - stringVariable:
+        name: Flow.transcriptRequested
+        initialValue:
+          lit: "false"
+        isInput: false
+        isOutput: false
+    - stringVariable:
+        name: Flow.workflowResult
+        initialValue:
+          noValue: true
+        isInput: false
+        isOutput: false
+  settingsErrorHandling:
+    errorHandling:
+      endWorkflow:
+        none: true
+  states:
+    - state:
+        name: Provision Flow
+        refId: Provision Flow_10
+        actions:
+          - getConversationData:
+              name: Get Conversation Data
+              conversationId:
+                exp: Flow.conversationId
+              participantId:
+                noValue: true
+              attributes:
+                - attribute:
+                    name:
+                      lit: transcriptRequested
+                    variable: Flow.transcriptRequested
+                - attribute:
+                    name:
+                      lit: email
+                    variable: Flow.email
+                - attribute:
+                    name:
+                      lit: phoneNumber
+                    variable: Flow.phoneNumber
+          - changeState:
+              name: Change State
+              targetStateRef: "/workflow/states/state[Transcript Requested?_125]"
+    - state:
+        name: Identify Email to Send Transcript
+        refId: Identify Email to Send Transcript_36
+        actions:
+          - callTask:
+              name: Call Task
+              targetTaskRef: "/workflow/tasks/task[Resolve External Contact_141]"
+          - decision:
+              name: External contact Id empty?
+              condition:
+                exp: IsNotSetOrEmpty(Flow.externalContactId)
+              outputs:
+                "yes":
+                  actions:
+                    - decision:
+                        name: No email provided?
+                        condition:
+                          exp: IsNotSetOrEmpty(Flow.email)
+                        outputs:
+                          "yes":
+                            actions:
+                              - updateData:
+                                  name: Update Data
+                                  statements:
+                                    - string:
+                                        variable: Flow.workflowResult
+                                        value:
+                                          lit: No external contact found or email address available.
+                          "no":
+                            actions:
+                              - updateData:
+                                  name: Assign placeholder name
+                                  statements:
+                                    - string:
+                                        variable: Flow.firstName
+                                        value:
+                                          lit: Customer
+                                    - string:
+                                        variable: Flow.lastName
+                                        value:
+                                          lit: ""
+                              - changeState:
+                                  name: Change State
+                                  targetStateRef: "/workflow/states/state[Compose HTML Message_46]"
+                "no":
+                  actions:
+                    - getExternalContact:
+                        name: Get External Contact
+                        externalId:
+                          exp: Flow.externalContactId
+                        externalResult:
+                          var: Flow.contact
+                        outputs:
+                          found:
+                            actions:
+                              - decision:
+                                  name: At least one email available?
+                                  condition:
+                                    exp: "!IsNotSetOrEmpty(Flow.contact.personalEmail) OR !IsNotSetOrEmpty(Flow.contact.workEmail) OR !IsNotSetOrEmpty(Flow.contact.otherEmail)"
+                                  outputs:
+                                    "yes":
+                                      actions:
+                                        - updateData:
+                                            name: Use email from contact record
+                                            statements:
+                                              - string:
+                                                  variable: Flow.email
+                                                  value:
+                                                    exp: "If(\tIsNotSetOrEmpty(Flow.contact.personalEmail),\n\tIf(\tIsNotSetOrEmpty(Flow.contact.workEmail),\n\t\tFlow.contact.otherEmail,\n\t\tFlow.contact.workEmail),\t\t\n\tFlow.contact.personalEmail)"
+                                              - string:
+                                                  variable: Flow.firstName
+                                                  value:
+                                                    exp: Flow.contact.firstName
+                                              - string:
+                                                  variable: Flow.lastName
+                                                  value:
+                                                    exp: Flow.contact.lastName
+                                        - changeState:
+                                            name: Change State
+                                            targetStateRef: "/workflow/states/state[Compose HTML Message_46]"
+                                    "no":
+                                      actions:
+                                        - updateData:
+                                            name: Update Data
+                                            statements:
+                                              - string:
+                                                  variable: Flow.workflowResult
+                                                  value:
+                                                    lit: No emails on external contact record.
+                          notFound:
+                            actions:
+                              - updateData:
+                                  name: Update Data
+                                  statements:
+                                    - string:
+                                        variable: Flow.workflowResult
+                                        value:
+                                          exp: "Append(\"Failed to get external contact for Id: \", Flow.externalContactId)"
+          - changeState:
+              name: Change State
+              targetStateRef: "/workflow/states/state[Save Exit Reason & End Workflow_69]"
+    - state:
+        name: Send Email
+        refId: Send Email_45
+        actions:
+          - updateData:
+              name: Flatten transcript
+              statements:
+                - string:
+                    variable: Flow.htmlTranscript
+                    value:
+                      exp: ToString(Flow.messageTextArray, "</p>")
+          - callData:
+              name: Send email
+              timeout:
+                lit:
+                  minutes: 1
+              category:
+                {{data_action_category}}:
+                  dataAction:
+                    {{send_agentless_email}}:
+                      inputs:
+                        fromAddress_email:
+                          lit: {{fromAddress_email}}
+                        fromAddress_name:
+                          lit: Notifications
+                        toAddress_email:
+                          exp: Flow.email
+                        toAddress_name:
+                          exp: Append(Flow.firstName, " ", Flow.lastName)
+                        replyToAddress_email:
+                          lit: {{replyToAddress_email}}
+                        replyToAddress_name:
+                          lit: no-reply
+                        subject:
+                          lit: Message transcript
+                        htmlBody:
+                          exp: Flow.htmlTranscript
+                      successOutputs:
+                        conversationId:
+                          noValue: true
+                      failureOutputs:
+                        errorCode:
+                          var: Flow.errorCode
+                        status:
+                          noValue: true
+                        correlationId:
+                          noValue: true
+                        entityId:
+                          noValue: true
+                        entityName:
+                          noValue: true
+                        userMessage:
+                          var: Flow.workflowResult
+                        userParamsMessage:
+                          noValue: true
+                        userParams.key:
+                          noValue: true
+                        userParams.value:
+                          noValue: true
+                        details.errorCode:
+                          noValue: true
+                        details.fieldName:
+                          noValue: true
+                        details.entityId:
+                          noValue: true
+                        details.entityName:
+                          noValue: true
+              outputs:
+                success:
+                  actions:
+                    - endWorkflow:
+                        name: End Workflow
+                        exitReason:
+                          noValue: true
+          - updateData:
+              name: Update Data
+              statements:
+                - string:
+                    variable: Flow.workflowResult
+                    value:
+                      lit: Failed to send transcript via email.
+          - changeState:
+              name: Change State
+              targetStateRef: "/workflow/states/state[Save Exit Reason & End Workflow_69]"
+    - state:
+        name: Compose HTML Message
+        refId: Compose HTML Message_46
+        variables:
+          - stringVariable:
+              name: State.fromName
+              initialValue:
+                noValue: true
+              isInput: false
+              isOutput: false
+          - stringCollectionVariable:
+              name: State.messages
+              initialValue:
+                noValue: true
+              isInput: false
+              isOutput: false
+          - stringVariable:
+              name: State.messageText
+              initialValue:
+                noValue: true
+              isInput: false
+              isOutput: false
+          - stringVariable:
+              name: State.pElement
+              initialValue:
+                noValue: true
+              isInput: false
+              isOutput: false
+          - stringCollectionVariable:
+              name: State.purposes
+              initialValue:
+                noValue: true
+              isInput: false
+              isOutput: false
+          - integerVariable:
+              name: State.transcriptIndex
+              initialValue:
+                noValue: true
+              isInput: false
+              isOutput: false
+        actions:
+          - wait:
+              name: Wait for the recording to process
+              trimDurationNearMaxRunningTime:
+                lit: false
+              duration:
+                lit:
+                  seconds: 30
+          - callData:
+              name: Call Data Action
+              timeout:
+                lit:
+                  minutes: 1
+              category:
+                {{data_action_category}}:
+                  dataAction:
+                    {{get_message_transcript}}:
+                      inputs:
+                        conversationId:
+                          exp: Flow.conversationId
+                      successOutputs:
+                        messages:
+                          var: State.messages
+                        purposes:
+                          var: State.purposes
+                      failureOutputs:
+                        errorCode:
+                          noValue: true
+                        status:
+                          noValue: true
+                        correlationId:
+                          noValue: true
+                        entityId:
+                          noValue: true
+                        entityName:
+                          noValue: true
+                        userMessage:
+                          var: Flow.workflowResult
+                        userParamsMessage:
+                          noValue: true
+                        userParams.key:
+                          noValue: true
+                        userParams.value:
+                          noValue: true
+                        details.errorCode:
+                          noValue: true
+                        details.fieldName:
+                          noValue: true
+                        details.entityId:
+                          noValue: true
+                        details.entityName:
+                          noValue: true
+              outputs:
+                success:
+                  actions:
+                    - loop:
+                        name: Iterate through messages
+                        currentIndex:
+                          var: State.transcriptIndex
+                        loopCount:
+                          exp: Count(State.messages)
+                        outputs:
+                          loop:
+                            actions:
+                              - decision:
+                                  name: Is this message empty?
+                                  condition:
+                                    exp: IsNotSetOrEmpty(State.messages[State.transcriptIndex])
+                                  outputs:
+                                    "yes":
+                                      actions:
+                                        - loopNext:
+                                            name: Next Loop
+                              - switch:
+                                  name: Who sent this message?
+                                  evaluate:
+                                    firstMatch:
+                                      string:
+                                        value:
+                                          exp: State.purposes[State.transcriptIndex]
+                                        default:
+                                          actions:
+                                            - updateData:
+                                                name: Flow
+                                                statements:
+                                                  - string:
+                                                      variable: State.fromName
+                                                      value:
+                                                        lit: Virtual Assistant
+                                                  - string:
+                                                      variable: State.pElement
+                                                      value:
+                                                        lit: "<p style=\"font-family:Roboto;color:green;size:10px\">"
+                                        cases:
+                                          - case:
+                                              value:
+                                                lit: customer
+                                              actions:
+                                                - updateData:
+                                                    name: Customer
+                                                    statements:
+                                                      - string:
+                                                          variable: State.fromName
+                                                          value:
+                                                            exp: Append(Flow.firstName, " ", Flow.lastName)
+                                                      - string:
+                                                          variable: State.pElement
+                                                          value:
+                                                            lit: "<p style=\"font-family:Helvetica;color:blue;size:10px\">"
+                                          - case:
+                                              value:
+                                                lit: agent
+                                              actions:
+                                                - updateData:
+                                                    name: Agent
+                                                    statements:
+                                                      - string:
+                                                          variable: State.fromName
+                                                          value:
+                                                            lit: Agent
+                                                      - string:
+                                                          variable: State.pElement
+                                                          value:
+                                                            lit: "<p style=\"font-family:Tahoma;color:black;size:10px\">"
+                              - updateData:
+                                  name: Build message text
+                                  statements:
+                                    - string:
+                                        variable: State.messageText
+                                        value:
+                                          exp: Append("[", State.fromName, "] ", State.messages[State.transcriptIndex])
+                                    - stringCollection:
+                                        variable: Flow.messageTextArray
+                                        value:
+                                          exp: AddItem(Flow.messageTextArray, Append(State.pElement, State.messageText))
+                    - changeState:
+                        name: Change State
+                        targetStateRef: "/workflow/states/state[Send Email_45]"
+          - updateData:
+              name: Update Data
+              statements:
+                - string:
+                    variable: Flow.workflowResult
+                    value:
+                      lit: Failed to get transcript from recording.
+          - changeState:
+              name: Change State
+              targetStateRef: "/workflow/states/state[Save Exit Reason & End Workflow_69]"
+    - state:
+        name: Save Exit Reason & End Workflow
+        refId: Save Exit Reason & End Workflow_69
+        actions:
+          - setConversationData:
+              name: Set Conversation Data
+              conversationId:
+                exp: Flow.conversationId
+              participantId:
+                noValue: true
+              attributes:
+                - attribute:
+                    name:
+                      lit: emailTranscriptResult
+                    value:
+                      exp: Flow.workflowResult
+          - endWorkflow:
+              name: End Workflow
+              exitReason:
+                exp: Flow.workflowResult
+    - state:
+        name: Transcript Requested?
+        refId: Transcript Requested?_125
+        actions:
+          - decision:
+              name: Should we email the transcript?
+              condition:
+                exp: IsSet(Flow.transcriptRequested) AND lower(Flow.transcriptRequested) == "true"
+              outputs:
+                "no":
+                  actions:
+                    - updateData:
+                        name: Update Data
+                        statements:
+                          - string:
+                              variable: Flow.workflowResult
+                              value:
+                                lit: Customer did not request a copy of the transcript.
+                    - changeState:
+                        name: Change State
+                        targetStateRef: "/workflow/states/state[Save Exit Reason & End Workflow_69]"
+          - changeState:
+              name: Change State
+              targetStateRef: "/workflow/states/state[Identify Email to Send Transcript_36]"
+  tasks:
+    - task:
+        name: Resolve External Contact
+        refId: Resolve External Contact_141
+        actions:
+          - getConversationData:
+              name: Do we have an email/phone?
+              conversationId:
+                exp: Flow.conversationId
+              participantId:
+                noValue: true
+              attributes:
+                - attribute:
+                    name:
+                      lit: email
+                    variable: Flow.email
+                - attribute:
+                    name:
+                      lit: phoneNumber
+                    variable: Flow.phoneNumber
+              outputs:
+                found:
+                  actions:
+                    - switch:
+                        name: Use available identifier
+                        evaluate:
+                          firstTrue:
+                            cases:
+                              - case:
+                                  value:
+                                    exp: "!IsNotSetOrEmpty(Flow.email)"
+                                  actions:
+                                    - updateData:
+                                        name: Use email address
+                                        statements:
+                                          - string:
+                                              variable: Flow.identifier
+                                              value:
+                                                lit: Email
+                                          - string:
+                                              variable: Flow.identifierValue
+                                              value:
+                                                exp: Flow.email
+                              - case:
+                                  value:
+                                    exp: "!IsNotSetOrEmpty(Flow.phoneNumber)"
+                                  actions:
+                                    - updateData:
+                                        name: Use phone number
+                                        statements:
+                                          - string:
+                                              variable: Flow.identifier
+                                              value:
+                                                lit: Phone
+                                          - string:
+                                              variable: Flow.identifierValue
+                                              value:
+                                                exp: Flow.phoneNumber
+                    - callCommonModule:
+                        name: Merge if Ephemeral Contact
+                        commonModule:
+                          {{common_module_name}}:
+                            ver_latestPublished:
+                              inputs:
+                                Common.conversationId:
+                                  exp: Flow.conversationId
+                                Common.identifierType:
+                                  exp: Flow.identifier
+                                Common.identifierValue:
+                                  exp: Flow.identifierValue
+                              outputs:
+                                Common.success:
+                                  noValue: true
+                                Common.externalContactId:
+                                  noValue: true
+          - endTask:
+              name: End Task
+              outputPath:
+                name: default
